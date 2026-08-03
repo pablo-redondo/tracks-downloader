@@ -72,6 +72,25 @@ def _is_soundcloud(url: str) -> bool:
     return "soundcloud.com" in url or "soundcloud.app.goo.gl" in url
 
 
+def _is_youtube(url: str) -> bool:
+    return "youtube.com" in url or "youtu.be" in url
+
+
+def _looks_like_bot_check(message: str) -> bool:
+    lowered = message.lower()
+    return "sign in to confirm" in lowered or "confirm you" in lowered and "bot" in lowered
+
+
+# YouTube's "Sign in to confirm you're not a bot" wall mostly targets the
+# default web client on datacenter IPs (like Fly's) — the embedded
+# android/ios/tv clients usually don't require the same proof-of-origin
+# token and often go through unaffected. Tried in order, only when the
+# default attempt actually hits that specific wall (not for every failure,
+# to avoid quadrupling the time spent on tracks that are genuinely
+# unavailable for other reasons).
+_YOUTUBE_CLIENT_FALLBACKS = ("android", "ios", "tv")
+
+
 # SoundCloud's public API allows ~600 requests per 10 minutes; blow past it
 # and it 429s almost everything for the rest of that window, which looks
 # like the app being frozen (it isn't — SoundCloud is refusing us). Staying
@@ -88,6 +107,12 @@ def _friendly_error(message: str) -> str:
         return "Pista privada: necesitas pegar el enlace completo con el token secreto que comparte el autor."
     if "geo" in lowered or "not available in your country" in lowered:
         return "Esta pista está bloqueada por región para tu ubicación."
+    if _looks_like_bot_check(message):
+        return (
+            "YouTube está bloqueando la descarga con su verificación anti-bot "
+            "(pasa a veces desde servidores en la nube). Ya se reintentó con "
+            "clientes alternativos sin éxito; prueba de nuevo más tarde."
+        )
     return message
 
 
@@ -324,7 +349,7 @@ class JobManager:
             elif d.get("status") == "finished":
                 item.progress = 97.0
 
-        opts = {
+        base_opts = {
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
@@ -346,25 +371,44 @@ class JobManager:
             "fragment_retries": 5,
             "extractor_retries": 3,
         }
+
+        mp3_path = None
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(item.source_url, download=True)
-                filename = ydl.prepare_filename(info)
-                mp3_path = str(Path(filename).with_suffix(".mp3"))
-            if not Path(mp3_path).exists():
-                raise RuntimeError("La conversión a mp3 falló")
-            item.file_path = mp3_path
-            item.progress = 100.0
-            item.status = "completed"
+            mp3_path = self._attempt_download(base_opts, item.source_url)
         except Exception as exc:  # noqa: BLE001
-            item.status = "error"
-            item.error = _friendly_error(str(exc))
-            return
+            last_exc = exc
+            if _is_youtube(item.source_url) and _looks_like_bot_check(str(exc)):
+                for client in _YOUTUBE_CLIENT_FALLBACKS:
+                    retry_opts = dict(base_opts)
+                    retry_opts["extractor_args"] = {"youtube": {"player_client": [client]}}
+                    try:
+                        mp3_path = self._attempt_download(retry_opts, item.source_url)
+                        last_exc = None
+                        break
+                    except Exception as retry_exc:  # noqa: BLE001
+                        last_exc = retry_exc
+            if mp3_path is None:
+                item.status = "error"
+                item.error = _friendly_error(str(last_exc))
+                return
+
+        item.file_path = mp3_path
+        item.progress = 100.0
+        item.status = "completed"
 
         # BPM/key analysis + adding the file to the playlist zip both happen
         # in the background: the download worker returns immediately, ready
         # to pick up the next track, instead of waiting on either of them.
         self._analysis_executor.submit(self._finish_item, job, item, mp3_path)
+
+    def _attempt_download(self, opts: dict, source_url: str) -> str:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(source_url, download=True)
+            filename = ydl.prepare_filename(info)
+        mp3_path = str(Path(filename).with_suffix(".mp3"))
+        if not Path(mp3_path).exists():
+            raise RuntimeError("La conversión a mp3 falló")
+        return mp3_path
 
     def _finish_item(self, job: Job, item: Item, mp3_path: str) -> None:
         # Best-effort BPM/key analysis: never fail the download over this.

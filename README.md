@@ -119,6 +119,15 @@ Serato, Traktor, etc.
   pase el autor.
 - Pistas **SoundCloud Go+** (de pago, protegidas con DRM) no se pueden
   descargar — la app te lo indicará como error.
+- **YouTube "Sign in to confirm you're not a bot"**: YouTube bloquea cada
+  vez más agresivamente las IPs de centros de datos (como las de Fly.io)
+  pidiendo iniciar sesión. La app reintenta automáticamente con los
+  clientes internos `android`/`ios`/`tv` de YouTube, que casi siempre
+  esquivan ese bloqueo sin necesitar cuentas ni cookies. Es una carrera de
+  armas activa entre `yt-dlp` y YouTube — si empieza a fallar de nuevo con
+  todos los reintentos agotados, lo primero a probar es actualizar
+  `yt-dlp` a la última versión y hacer un rebuild sin caché
+  (`fly deploy --no-cache`).
 
 **Enlaces de Spotify, Apple Music, Deezer o Tidal** (solo pista suelta, no
 playlists de esas plataformas): como esas plataformas protegen su audio con

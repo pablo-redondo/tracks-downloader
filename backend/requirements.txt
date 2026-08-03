@@ -1,6 +1,6 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
-yt-dlp>=2024.8.6
+yt-dlp>=2025.6.30
 mutagen>=1.47
 librosa>=0.10
 soundfile>=0.12
