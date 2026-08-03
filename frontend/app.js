@@ -85,7 +85,15 @@ function createJobCard(jobId) {
     <div class="progress-bar"><div style="width:0%"></div></div>
     <div class="items"></div>
   `;
-  return { el };
+  return { el, rows: new Map(), itemCount: 0 };
+}
+
+// Listas de cientos de canciones no deben machacar al navegador con
+// sondeos constantes: cuanto más grande la lista, más se espacian.
+function pollDelay(itemCount) {
+  if (itemCount > 200) return 4000;
+  if (itemCount > 50) return 2000;
+  return 1200;
 }
 
 async function poll(jobId, card) {
@@ -94,6 +102,7 @@ async function poll(jobId, card) {
     if (!res.ok) return;
     const job = await res.json();
     render(card, job);
+    card.itemCount = job.items.length;
 
     if (job.status === "completed" || job.status === "completed_with_errors" || job.status === "error") {
       return;
@@ -101,7 +110,67 @@ async function poll(jobId, card) {
   } catch (err) {
     // network hiccup, keep polling
   }
-  setTimeout(() => poll(jobId, card), 1200);
+  setTimeout(() => poll(jobId, card), pollDelay(card.itemCount));
+}
+
+function buildItemRow() {
+  const el = document.createElement("div");
+  el.className = "item-row";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.className = "item-title";
+  const titleText = document.createElement("span");
+  const br = document.createElement("br");
+  br.style.display = "none";
+  const meta = document.createElement("span");
+  meta.className = "item-meta";
+  meta.style.display = "none";
+  titleWrap.append(titleText, br, meta);
+  el.appendChild(titleWrap);
+
+  const progressWrap = document.createElement("div");
+  progressWrap.className = "item-progress progress-bar";
+  const bar = document.createElement("div");
+  progressWrap.appendChild(bar);
+  el.appendChild(progressWrap);
+
+  const action = document.createElement("a");
+  action.className = "item-link";
+  el.appendChild(action);
+
+  return { el, titleText, br, meta, bar, action, sig: null };
+}
+
+function updateItemRow(row, item) {
+  row.titleText.textContent = item.title;
+
+  const parts = [];
+  if (item.bpm) parts.push(`${item.bpm} BPM`);
+  if (item.camelot) parts.push(item.camelot);
+  if (parts.length) {
+    row.meta.textContent = parts.join(" · ");
+    row.meta.style.display = "";
+    row.br.style.display = "";
+  } else {
+    row.meta.style.display = "none";
+    row.br.style.display = "none";
+  }
+
+  row.bar.style.width = `${item.progress}%`;
+
+  if (item.status === "completed" && item.download_url) {
+    row.action.href = apiUrl(item.download_url);
+    row.action.style.color = "";
+    row.action.textContent = "⬇ mp3";
+  } else if (item.status === "error") {
+    row.action.removeAttribute("href");
+    row.action.style.color = "var(--error)";
+    row.action.textContent = "error";
+  } else {
+    row.action.removeAttribute("href");
+    row.action.style.color = "";
+    row.action.textContent = item.status;
+  }
 }
 
 function render(card, job) {
@@ -126,60 +195,32 @@ function render(card, job) {
   if (job.status === "completed") status.classList.add("completed");
   if (job.status === "error") status.classList.add("error");
 
-  itemsEl.innerHTML = "";
+  // Solo se tocan las filas cuyo estado cambió desde el último sondeo, en
+  // vez de tirar y reconstruir el DOM entero (crítico con listas de
+  // cientos de pistas sondeadas cada pocos segundos).
   for (const item of job.items) {
-    const row = document.createElement("div");
-    row.className = "item-row";
-
-    const t = document.createElement("div");
-    t.className = "item-title";
-    t.textContent = item.title;
-    if (item.bpm || item.camelot) {
-      const meta = document.createElement("span");
-      meta.className = "item-meta";
-      const parts = [];
-      if (item.bpm) parts.push(`${item.bpm} BPM`);
-      if (item.camelot) parts.push(item.camelot);
-      meta.textContent = parts.join(" · ");
-      t.appendChild(document.createElement("br"));
-      t.appendChild(meta);
+    const sig = `${item.status}|${item.progress}|${item.bpm}|${item.camelot}|${item.download_url}`;
+    let row = card.rows.get(item.id);
+    if (!row) {
+      row = buildItemRow();
+      card.rows.set(item.id, row);
+      itemsEl.appendChild(row.el);
     }
-    row.appendChild(t);
-
-    const p = document.createElement("div");
-    p.className = "item-progress progress-bar";
-    p.innerHTML = `<div style="width:${item.progress}%"></div>`;
-    row.appendChild(p);
-
-    if (item.status === "completed" && item.download_url) {
-      const a = document.createElement("a");
-      a.href = apiUrl(item.download_url);
-      a.className = "item-link";
-      a.textContent = "⬇ mp3";
-      row.appendChild(a);
-    } else if (item.status === "error") {
-      const s = document.createElement("span");
-      s.className = "item-link";
-      s.style.color = "var(--error)";
-      s.textContent = "error";
-      row.appendChild(s);
-    } else {
-      const s = document.createElement("span");
-      s.className = "item-link";
-      s.textContent = item.status;
-      row.appendChild(s);
-    }
-
-    itemsEl.appendChild(row);
+    if (row.sig === sig) continue;
+    row.sig = sig;
+    updateItemRow(row, item);
   }
 
   const existingZip = card.el.querySelector(".zip-link");
-  if (existingZip) existingZip.remove();
   if (job.is_playlist && (job.status === "completed" || job.status === "completed_with_errors")) {
-    const zip = document.createElement("a");
-    zip.className = "zip-link";
-    zip.href = apiUrl(`/api/jobs/${job.id}/zip`);
-    zip.textContent = "⬇ Descargar todo (ZIP)";
-    card.el.appendChild(zip);
+    if (!existingZip) {
+      const zip = document.createElement("a");
+      zip.className = "zip-link";
+      zip.href = apiUrl(`/api/jobs/${job.id}/zip`);
+      zip.textContent = "⬇ Descargar todo (ZIP)";
+      card.el.appendChild(zip);
+    }
+  } else if (existingZip) {
+    existingZip.remove();
   }
 }

@@ -30,6 +30,12 @@ ALLOWED_DOMAINS = (
 
 _ITEM_WORKERS = 3
 
+# librosa/numba/scipy analysis is memory-hungry; running it concurrently for
+# several tracks at once is what tends to OOM small machines on big
+# playlists, so only one track is analyzed at a time regardless of how many
+# downloads run in parallel.
+_ANALYSIS_LOCK = threading.Lock()
+
 
 def _friendly_error(message: str) -> str:
     lowered = message.lower()
@@ -79,6 +85,7 @@ class Job:
     error: Optional[str] = None
     items: dict = field(default_factory=dict)
     item_order: list = field(default_factory=list)
+    zip_completed_count: int = 0
 
     def overall_progress(self) -> float:
         if not self.items:
@@ -145,9 +152,15 @@ class JobManager:
         if not completed:
             return None
         zip_path = DOWNLOADS_DIR / job_id / "_playlist.zip"
+        # Building the zip for a big playlist (hundreds of tracks) is slow and
+        # doubles disk usage momentarily; skip it if nothing changed since the
+        # last time it was built (e.g. the user clicks the link twice).
+        if zip_path.exists() and job.zip_completed_count == len(completed):
+            return zip_path
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for item in completed:
                 zf.write(item.file_path, arcname=Path(item.file_path).name)
+        job.zip_completed_count = len(completed)
         return zip_path
 
     # -- internals ---------------------------------------------------
@@ -272,7 +285,8 @@ class JobManager:
 
         # Best-effort BPM/key analysis: never fail the download over this.
         try:
-            result = analyze_audio(mp3_path)
+            with _ANALYSIS_LOCK:
+                result = analyze_audio(mp3_path)
             item.bpm = result["bpm"]
             item.key = result["key"]
             item.camelot = result["camelot"]

@@ -128,3 +128,38 @@ Se estiman de forma local con `librosa` (analizando los primeros 2 minutos
 de cada pista) y son **aproximados** — pensados para tener una referencia
 rápida al organizar tu librería, no para sustituir un análisis fino tipo
 Mixed In Key.
+
+## Playlists grandes (cientos de pistas)
+
+La app está pensada para poder pegar una playlist entera (aunque tenga
+cientos de canciones) y que se descargue sola:
+
+- Las descargas van en paralelo (3 a la vez) pero el análisis de BPM/tonalidad
+  (lo más pesado en memoria, por `librosa`/`numba`) se serializa a 1 pista a
+  la vez, para no disparar el consumo de RAM con listas largas.
+- El ZIP de "descargar todo" se cachea: si ya estaba construido y no hay
+  pistas nuevas completadas, no se reconstruye desde cero cada vez que se
+  pide.
+- El frontend actualiza solo las filas que cambiaron en cada sondeo (en vez
+  de redibujar la lista entera) y espacia el intervalo de sondeo según el
+  tamaño de la lista (hasta cada 4s con más de 200 pistas), para no ir lento
+  en listas de 500+.
+
+Recomendaciones si vas a mover playlists muy grandes (según la máquina de
+Fly.io que tengas):
+
+- **Memoria**: los `fly.toml` de este repo ya piden `2048mb` (antes 1024mb).
+  Si tu app ya estaba desplegada con 1024mb, súbela con
+  `fly scale memory 2048` (CLI) o redeploy con el `fly.toml` actualizado.
+- **Disco**: 500 pistas a 320 kbps son varios GB (los mp3 se quedan en
+  `backend/downloads/<job_id>/` hasta que borres el job). El ZIP añade
+  temporalmente casi el mismo tamaño otra vez mientras se genera. Si tu
+  máquina de Fly se queda sin disco, para playlists enormes es más seguro
+  descargar los mp3 sueltos en vez del ZIP, o borrar el job
+  (`DELETE /api/jobs/<job_id>`) tras descargar antes de lanzar la siguiente
+  tanda grande.
+- **Rate limit de SoundCloud**: su API pública admite ~600 peticiones cada
+  10 minutos. Con 500 pistas de SoundCloud puedes rozar ese límite; si ves
+  errores puntuales de "rate limit" en algunas pistas, reinténtalas más
+  tarde — `yt-dlp` ya reintenta automáticamente varias veces antes de darse
+  por vencido.
