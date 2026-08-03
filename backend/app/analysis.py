@@ -37,8 +37,13 @@ def _estimate_key(y: np.ndarray, sr: int) -> tuple[str, str]:
 
 
 def analyze_audio(path: str) -> dict:
-    """Loads (at most) the first 2 minutes of the track to estimate BPM and key."""
-    y, sr = librosa.load(path, sr=22050, mono=True, duration=120)
+    """Loads (at most) the first 45s of the track to estimate BPM and key.
+
+    Kept short on purpose: this runs in the background on a single shared
+    CPU alongside every download's ffmpeg transcode, so the lighter it is,
+    the less it competes for CPU time and the sooner it catches up on a
+    big playlist."""
+    y, sr = librosa.load(path, sr=22050, mono=True, duration=45)
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
     bpm = float(np.atleast_1d(tempo)[0])
     key_label, camelot = _estimate_key(y, sr)

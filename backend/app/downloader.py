@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import shutil
 import threading
+import time
 import uuid
 import zipfile
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,6 +33,42 @@ ALLOWED_DOMAINS = (
 # Downloading is mostly network-bound (yt-dlp resolving the stream + the
 # transfer itself), so it scales well beyond the machine's CPU count.
 _ITEM_WORKERS = 5
+
+
+class _RateLimiter:
+    """Sliding-window limiter: blocks callers so no more than `max_calls`
+    happen within any `period` seconds, shared across every thread that
+    calls it."""
+
+    def __init__(self, max_calls: int, period: float) -> None:
+        self._max_calls = max_calls
+        self._period = period
+        self._lock = threading.Lock()
+        self._calls: deque = deque()
+
+    def acquire(self) -> None:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                while self._calls and now - self._calls[0] > self._period:
+                    self._calls.popleft()
+                if len(self._calls) < self._max_calls:
+                    self._calls.append(now)
+                    return
+                sleep_for = self._period - (now - self._calls[0]) + 0.05
+            time.sleep(max(sleep_for, 0.05))
+
+
+def _is_soundcloud(url: str) -> bool:
+    return "soundcloud.com" in url or "soundcloud.app.goo.gl" in url
+
+
+# SoundCloud's public API allows ~600 requests per 10 minutes; blow past it
+# and it 429s almost everything for the rest of that window, which looks
+# like the app being frozen (it isn't — SoundCloud is refusing us). Staying
+# comfortably under that ceiling means downloads keep flowing steadily
+# instead of bursting and then stalling for minutes at a time.
+_SOUNDCLOUD_LIMITER = _RateLimiter(max_calls=450, period=600)
 
 
 def _friendly_error(message: str) -> str:
@@ -251,6 +289,11 @@ class JobManager:
         return results
 
     def _download_item(self, job: Job, item: Item, job_dir: Path) -> None:
+        if _is_soundcloud(item.source_url):
+            # Stays "pending" (not "downloading") while it waits its turn —
+            # it's genuinely not started yet, just paced to respect
+            # SoundCloud's rate limit instead of getting 429'd.
+            _SOUNDCLOUD_LIMITER.acquire()
         item.status = "downloading"
         index = job.item_order.index(item.id) + 1
         prefix = f"{index:02d} - " if job.is_playlist else ""

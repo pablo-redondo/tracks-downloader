@@ -176,7 +176,23 @@ Fly.io que tengas):
   (`DELETE /api/jobs/<job_id>`) tras descargar antes de lanzar la siguiente
   tanda grande.
 - **Rate limit de SoundCloud**: su API pública admite ~600 peticiones cada
-  10 minutos. Con 500 pistas de SoundCloud puedes rozar ese límite; si ves
-  errores puntuales de "rate limit" en algunas pistas, reinténtalas más
-  tarde — `yt-dlp` ya reintenta automáticamente varias veces antes de darse
-  por vencido.
+  10 minutos. Con cientos de pistas de SoundCloud es fácil chocar contra
+  ese límite en el primer minuto si se piden todas a la vez — y cuando
+  SoundCloud empieza a devolver error, lo hace para (casi) todo el resto de
+  esa ventana de 10 minutos, lo que se ve desde fuera como que la app se
+  quedó "colgada" sin avanzar (no lo está: es SoundCloud bloqueando).
+  Por eso las descargas de SoundCloud pasan por un limitador propio que
+  reparte las peticiones para quedarse por debajo del límite, en vez de
+  ráfaga-y-bloqueo. Esto significa que **para playlists muy grandes de
+  SoundCloud, la velocidad real tiene un techo que pone la propia
+  plataforma**, no la app ni la máquina — con ~450 peticiones/10min de
+  margen y 1-2 peticiones por pista, una lista de 465 pistas puede tardar
+  del orden de 10-20 minutos en completarse aunque todo funcione
+  perfectamente. YouTube no tiene este límite tan agresivo.
+- **CPU**: el análisis de BPM/tonalidad y la conversión a mp3 (ffmpeg)
+  compiten por la misma CPU. Si tu máquina de Fly es `shared-cpu-1x` (1
+  vCPU), 5 descargas a la vez transcodificando de golpe se notará lento
+  independientemente del rate limit. Si quieres exprimir más velocidad en
+  las partes que si dependen de CPU/red (YouTube, o SoundCloud una vez
+  reparte el rate limit), sube la máquina con
+  `fly scale vm shared-cpu-2x` (o más núcleos).
