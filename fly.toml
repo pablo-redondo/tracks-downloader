@@ -1,0 +1,20 @@
+# Para desplegar desde la raíz del repo (p. ej. usando el asistente web de
+# Fly.io, que solo mira el Dockerfile de la raíz). Cambia "app" si ya
+# registraste otro nombre.
+app = "tracks-downloader"
+primary_region = "mad"
+
+[build]
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  memory = "1024mb"
+  cpu_kind = "shared"
+  cpus = 1

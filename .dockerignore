@@ -1,0 +1,7 @@
+frontend
+.git
+backend/.venv
+backend/downloads/*
+__pycache__
+*.pyc
+.pytest_cache

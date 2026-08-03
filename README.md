@@ -36,9 +36,17 @@ integrado (no hace falta Vercel para uso local).
 
 ### Desplegar el backend en Fly.io
 
-`backend/Dockerfile` (Python 3.11 + ffmpeg + libsndfile) y `backend/fly.toml`
-ya están preparados. Solo te hace falta la [CLI de Fly](https://fly.io/docs/flyctl/install/)
-y una cuenta (pide tarjeta para verificar, no cobra dentro del free tier):
+Hay dos Dockerfiles preparados porque el repo también tiene `frontend/` —
+uno para usar la CLI de Fly desde `backend/`, y otro en la raíz por si usas
+el asistente web de Fly (que solo detecta un Dockerfile en la raíz del
+repo). Usa el que encaje con cómo quieras desplegar; el resultado es el
+mismo backend.
+
+#### Opción A: CLI de Fly (recomendada)
+
+Usa `backend/Dockerfile` y `backend/fly.toml`. Necesitas la
+[CLI de Fly](https://fly.io/docs/flyctl/install/) y una cuenta (pide
+tarjeta para verificar, no cobra dentro del free tier):
 
 ```bash
 cd backend
@@ -56,11 +64,20 @@ fly apps create tu-nombre-unico
 fly deploy
 ```
 
-Importante — el estado de los trabajos vive en memoria del proceso, así que
-**no escales a más de 1 máquina** (`fly scale count 1`, que además es el
-valor por defecto). `fly.toml` ya fija `min_machines_running = 1` y
-`auto_stop_machines = false` para que la app no se "duerma" a mitad de una
-descarga.
+#### Opción B: asistente web de Fly (Dockerfile en la raíz)
+
+Si conectas el repo desde [fly.io/dashboard](https://fly.io/dashboard) y
+usas su asistente de "Launch", este solo mira un Dockerfile en la raíz del
+repositorio. Para ese flujo están `Dockerfile` y `fly.toml` en la raíz
+(no en `backend/`) — con las mismas rutas pero copiando desde
+`backend/requirements.txt` y `backend/app`. No hace falta que hagas nada
+distinto: el asistente lo detectará solo y podrás seguir con "Deploy".
+
+Importante en ambas opciones — el estado de los trabajos vive en memoria
+del proceso, así que **no escales a más de 1 máquina**
+(`fly scale count 1`, que además es el valor por defecto). Los `fly.toml`
+ya fijan `min_machines_running = 1` y `auto_stop_machines = false` para que
+la app no se "duerma" a mitad de una descarga.
 
 Cuando termine el deploy, `fly status` te da la URL pública
 (`https://tu-nombre-unico.fly.dev`).
