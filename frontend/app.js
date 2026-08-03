@@ -3,6 +3,28 @@ const urlInput = document.getElementById("url-input");
 const qualitySelect = document.getElementById("quality-select");
 const formError = document.getElementById("form-error");
 const jobsList = document.getElementById("jobs-list");
+const settingsBtn = document.getElementById("settings-btn");
+
+// When this frontend is deployed on its own (e.g. Vercel) it needs to know
+// where the backend API lives. Empty string = same origin (default when the
+// backend serves this frontend itself, as in local dev).
+function getApiBase() {
+  return localStorage.getItem("apiBase") || "";
+}
+
+function apiUrl(path) {
+  return `${getApiBase()}${path}`;
+}
+
+settingsBtn.addEventListener("click", () => {
+  const current = getApiBase();
+  const next = window.prompt(
+    "URL del backend (déjalo vacío si el frontend y el backend están en el mismo dominio):",
+    current
+  );
+  if (next === null) return;
+  localStorage.setItem("apiBase", next.trim().replace(/\/$/, ""));
+});
 
 const jobCards = new Map(); // job_id -> { el, timer }
 
@@ -14,7 +36,7 @@ form.addEventListener("submit", async (e) => {
   const quality = qualitySelect.value;
 
   try {
-    const res = await fetch("/api/jobs", {
+    const res = await fetch(apiUrl("/api/jobs"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url, quality }),
@@ -53,7 +75,7 @@ function createJobCard(jobId) {
 
 async function poll(jobId, card) {
   try {
-    const res = await fetch(`/api/jobs/${jobId}`);
+    const res = await fetch(apiUrl(`/api/jobs/${jobId}`));
     if (!res.ok) return;
     const job = await res.json();
     render(card, job);
@@ -97,6 +119,16 @@ function render(card, job) {
     const t = document.createElement("div");
     t.className = "item-title";
     t.textContent = item.title;
+    if (item.bpm || item.camelot) {
+      const meta = document.createElement("span");
+      meta.className = "item-meta";
+      const parts = [];
+      if (item.bpm) parts.push(`${item.bpm} BPM`);
+      if (item.camelot) parts.push(item.camelot);
+      meta.textContent = parts.join(" · ");
+      t.appendChild(document.createElement("br"));
+      t.appendChild(meta);
+    }
     row.appendChild(t);
 
     const p = document.createElement("div");
@@ -106,7 +138,7 @@ function render(card, job) {
 
     if (item.status === "completed" && item.download_url) {
       const a = document.createElement("a");
-      a.href = item.download_url;
+      a.href = apiUrl(item.download_url);
       a.className = "item-link";
       a.textContent = "⬇ mp3";
       row.appendChild(a);
@@ -131,7 +163,7 @@ function render(card, job) {
   if (job.is_playlist && (job.status === "completed" || job.status === "completed_with_errors")) {
     const zip = document.createElement("a");
     zip.className = "zip-link";
-    zip.href = `/api/jobs/${job.id}/zip`;
+    zip.href = apiUrl(`/api/jobs/${job.id}/zip`);
     zip.textContent = "⬇ Descargar todo (ZIP)";
     card.el.appendChild(zip);
   }

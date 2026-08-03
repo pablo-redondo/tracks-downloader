@@ -13,6 +13,8 @@ from typing import Optional
 
 import yt_dlp
 
+from .analysis import analyze_audio, tag_analysis
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
 DOWNLOADS_DIR.mkdir(exist_ok=True)
@@ -23,9 +25,21 @@ ALLOWED_DOMAINS = (
     "music.youtube.com",
     "soundcloud.com",
     "on.soundcloud.com",
+    "soundcloud.app.goo.gl",
 )
 
 _ITEM_WORKERS = 3
+
+
+def _friendly_error(message: str) -> str:
+    lowered = message.lower()
+    if "go+" in lowered or "preview" in lowered and "soundcloud" in lowered:
+        return "Esta pista es SoundCloud Go+ (de pago, con DRM) y no se puede descargar."
+    if "private" in lowered and "token" in lowered:
+        return "Pista privada: necesitas pegar el enlace completo con el token secreto que comparte el autor."
+    if "geo" in lowered or "not available in your country" in lowered:
+        return "Esta pista está bloqueada por región para tu ubicación."
+    return message
 
 
 @dataclass
@@ -37,6 +51,9 @@ class Item:
     progress: float = 0.0
     error: Optional[str] = None
     file_path: Optional[str] = None
+    bpm: Optional[float] = None
+    key: Optional[str] = None
+    camelot: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +62,9 @@ class Item:
             "status": self.status,
             "progress": round(self.progress, 1),
             "error": self.error,
+            "bpm": self.bpm,
+            "key": self.key,
+            "camelot": self.camelot,
         }
 
 
@@ -247,4 +267,15 @@ class JobManager:
             item.status = "completed"
         except Exception as exc:  # noqa: BLE001
             item.status = "error"
-            item.error = str(exc)
+            item.error = _friendly_error(str(exc))
+            return
+
+        # Best-effort BPM/key analysis: never fail the download over this.
+        try:
+            result = analyze_audio(mp3_path)
+            item.bpm = result["bpm"]
+            item.key = result["key"]
+            item.camelot = result["camelot"]
+            tag_analysis(mp3_path, result["bpm"], result["camelot"])
+        except Exception:  # noqa: BLE001
+            pass

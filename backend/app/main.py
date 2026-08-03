@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
@@ -10,6 +11,17 @@ from pydantic import BaseModel, field_validator
 from .downloader import ALLOWED_DOMAINS, JobManager
 
 app = FastAPI(title="Tracks Downloader")
+
+# The frontend can be deployed on a different origin (e.g. Vercel), so it
+# needs to call this API cross-origin. This app is meant for personal/local
+# use, not multi-tenant, so a permissive CORS policy is acceptable here.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 job_manager = JobManager()
 
 

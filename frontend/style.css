@@ -37,6 +37,21 @@ header h1 {
   margin: 0;
 }
 
+#settings-btn {
+  margin-top: 0.8rem;
+  background: transparent;
+  border: 1px solid #2a2e37;
+  color: var(--muted);
+  padding: 0.35rem 0.8rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+}
+
+#settings-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 main {
   max-width: 780px;
   margin: 0 auto;
@@ -168,6 +183,11 @@ button:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.item-meta {
+  color: var(--accent);
+  font-size: 0.78rem;
 }
 
 .item-progress {
