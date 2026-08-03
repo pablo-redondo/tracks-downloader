@@ -35,6 +35,12 @@ header h1 {
 .subtitle {
   color: var(--muted);
   margin: 0;
+  font-size: 0.95rem;
+}
+
+.subtitle + .subtitle {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
 }
 
 #settings-btn {

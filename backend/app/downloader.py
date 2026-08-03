@@ -1,5 +1,8 @@
 """Job manager: extracts track/playlist info with yt-dlp and downloads audio
-from YouTube and SoundCloud only."""
+from YouTube and SoundCloud. Links from other platforms (Spotify, Apple
+Music, Deezer, Tidal...) get resolved to a matching YouTube/SoundCloud
+track first, since those platforms are DRM-protected and can't be
+downloaded from directly."""
 from __future__ import annotations
 
 import shutil
@@ -16,6 +19,7 @@ from typing import Optional
 import yt_dlp
 
 from .analysis import analyze_audio, tag_analysis
+from .lookup import LOOKUP_DOMAINS, is_lookup_domain, resolve_foreign_track
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOWNLOADS_DIR = BASE_DIR / "downloads"
@@ -29,6 +33,11 @@ ALLOWED_DOMAINS = (
     "on.soundcloud.com",
     "soundcloud.app.goo.gl",
 )
+
+# Accepted at the API boundary in addition to ALLOWED_DOMAINS: these get
+# looked up and redirected to a YouTube/SoundCloud match instead of being
+# downloaded directly.
+ACCEPTED_DOMAINS = ALLOWED_DOMAINS + LOOKUP_DOMAINS
 
 # Downloading is mostly network-bound (yt-dlp resolving the stream + the
 # transfer itself), so it scales well beyond the machine's CPU count.
@@ -251,6 +260,13 @@ class JobManager:
             job.error = "No se pudo descargar ningún elemento"
 
     def _extract_entries(self, url: str) -> list[dict]:
+        if is_lookup_domain(url):
+            # Spotify/Apple Music/Deezer/Tidal etc. — not downloadable
+            # directly (DRM), so find the closest match on YouTube/
+            # SoundCloud instead and treat it as a normal single-track job.
+            found = resolve_foreign_track(url)
+            return [{"url": found["url"], "title": found["title"], "playlist_title": None}]
+
         opts = {
             "quiet": True,
             "no_warnings": True,

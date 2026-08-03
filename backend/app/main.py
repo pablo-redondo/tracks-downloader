@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
 
-from .downloader import ALLOWED_DOMAINS, JobManager
+from .downloader import ACCEPTED_DOMAINS, JobManager
 
 app = FastAPI(title="Tracks Downloader")
 
@@ -33,8 +33,10 @@ class CreateJobRequest(BaseModel):
     @classmethod
     def validate_url(cls, v: str) -> str:
         v = v.strip()
-        if not v or not any(domain in v for domain in ALLOWED_DOMAINS):
-            raise ValueError("Solo se admiten enlaces de YouTube o SoundCloud")
+        if not v or not any(domain in v for domain in ACCEPTED_DOMAINS):
+            raise ValueError(
+                "Solo se admiten enlaces de YouTube, SoundCloud, Spotify, Apple Music, Deezer o Tidal"
+            )
         return v
 
     @field_validator("quality")

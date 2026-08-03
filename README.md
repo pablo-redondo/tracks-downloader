@@ -109,7 +109,7 @@ Serato, Traktor, etc.
 
 ## Alcance
 
-Solo admite enlaces de `youtube.com`, `youtu.be`, `music.youtube.com`,
+**Descarga directa** desde `youtube.com`, `youtu.be`, `music.youtube.com`,
 `soundcloud.com`, `soundcloud.app.goo.gl` y `on.soundcloud.com`.
 
 - La inmensa mayoría de pistas públicas de SoundCloud se descargan sin
@@ -119,8 +119,23 @@ Solo admite enlaces de `youtube.com`, `youtu.be`, `music.youtube.com`,
   pase el autor.
 - Pistas **SoundCloud Go+** (de pago, protegidas con DRM) no se pueden
   descargar — la app te lo indicará como error.
-- Spotify y Apple Music no están soportados porque protegen su audio con
-  DRM.
+
+**Enlaces de Spotify, Apple Music, Deezer o Tidal** (solo pista suelta, no
+playlists de esas plataformas): como esas plataformas protegen su audio con
+DRM y no se pueden descargar directamente, la app lee el título/artista de
+la página y busca automáticamente la pista en YouTube (o en SoundCloud si
+no aparece en YouTube), y descarga esa coincidencia en su lugar. Es un
+"mejor esfuerzo":
+
+- Puede fallar si la página no expone el título de forma legible (algún
+  cambio de formato en esas webs) o si no hay ninguna coincidencia
+  razonable en YouTube/SoundCloud — la app te lo dirá como error.
+- La versión descargada es la que encuentre en YouTube/SoundCloud (audio
+  oficial, en directo, remix...), no necesariamente el master exacto de
+  Spotify/Apple Music/Deezer/Tidal.
+- Playlists/álbumes enteros de estas plataformas **no están soportados**
+  todavía (solo enlaces de una pista suelta) — habría que autenticarse
+  contra la API de cada plataforma para leer el tracklist completo.
 
 ## BPM y tonalidad
 
