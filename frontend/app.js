@@ -36,12 +36,27 @@ form.addEventListener("submit", async (e) => {
   const quality = qualitySelect.value;
 
   try {
-    const res = await fetch(apiUrl("/api/jobs"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url, quality }),
-    });
-    const data = await res.json();
+    let res;
+    try {
+      res = await fetch(apiUrl("/api/jobs"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url, quality }),
+      });
+    } catch {
+      throw new Error(
+        "No se pudo conectar con el backend. Revisa la URL configurada en ⚙️ Backend."
+      );
+    }
+    const text = await res.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        "El backend no respondió como se esperaba (¿URL correcta en ⚙️ Backend?)."
+      );
+    }
     if (!res.ok) {
       throw new Error(data.detail?.[0]?.msg || data.detail || "Error al crear la descarga");
     }
