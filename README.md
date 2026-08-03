@@ -134,9 +134,15 @@ Mixed In Key.
 La app está pensada para poder pegar una playlist entera (aunque tenga
 cientos de canciones) y que se descargue sola:
 
-- Las descargas van en paralelo (3 a la vez) pero el análisis de BPM/tonalidad
-  (lo más pesado en memoria, por `librosa`/`numba`) se serializa a 1 pista a
-  la vez, para no disparar el consumo de RAM con listas largas.
+- Las descargas van en paralelo (5 a la vez — es una tarea sobre todo de red,
+  no de CPU). El análisis de BPM/tonalidad (lo más pesado en memoria, por
+  `librosa`/`numba`) corre en su propia cola de fondo, separada de las
+  descargas: si una pista tarda mucho en analizarse, retrasa solo su BPM/
+  tonalidad, nunca bloquea las descargas de las demás pistas. (Antes el
+  análisis se hacía en línea con un candado compartido: si la primera pista
+  analizada iba lenta, los 3-5 hilos de descarga se quedaban todos
+  esperando ese mismo candado y la playlist entera se congelaba justo
+  después de las primeras pistas — ya corregido.)
 - El ZIP de "descargar todo" se cachea: si ya estaba construido y no hay
   pistas nuevas completadas, no se reconstruye desde cero cada vez que se
   pide.

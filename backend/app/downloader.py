@@ -28,13 +28,9 @@ ALLOWED_DOMAINS = (
     "soundcloud.app.goo.gl",
 )
 
-_ITEM_WORKERS = 3
-
-# librosa/numba/scipy analysis is memory-hungry; running it concurrently for
-# several tracks at once is what tends to OOM small machines on big
-# playlists, so only one track is analyzed at a time regardless of how many
-# downloads run in parallel.
-_ANALYSIS_LOCK = threading.Lock()
+# Downloading is mostly network-bound (yt-dlp resolving the stream + the
+# transfer itself), so it scales well beyond the machine's CPU count.
+_ITEM_WORKERS = 5
 
 
 def _friendly_error(message: str) -> str:
@@ -119,6 +115,14 @@ class JobManager:
     def __init__(self) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
+        # BPM/key analysis (librosa/numba) runs on its own single-worker
+        # queue, completely separate from the download workers. It used to
+        # run inline behind a shared lock, which meant a single slow analysis
+        # (e.g. numba's JIT warmup on first use) piled up every download
+        # worker waiting on it — freezing the whole playlist after the first
+        # _ITEM_WORKERS tracks. Decoupled, a slow analysis only delays BPM
+        # tags, never downloads.
+        self._analysis_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="analysis")
 
     def create_job(self, url: str, quality: str) -> str:
         job_id = uuid.uuid4().hex[:12]
@@ -298,10 +302,15 @@ class JobManager:
             item.error = _friendly_error(str(exc))
             return
 
+        # BPM/key analysis + adding the file to the playlist zip both happen
+        # in the background: the download worker returns immediately, ready
+        # to pick up the next track, instead of waiting on either of them.
+        self._analysis_executor.submit(self._finish_item, job, item, mp3_path)
+
+    def _finish_item(self, job: Job, item: Item, mp3_path: str) -> None:
         # Best-effort BPM/key analysis: never fail the download over this.
         try:
-            with _ANALYSIS_LOCK:
-                result = analyze_audio(mp3_path)
+            result = analyze_audio(mp3_path)
             item.bpm = result["bpm"]
             item.key = result["key"]
             item.camelot = result["camelot"]
