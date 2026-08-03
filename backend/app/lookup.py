@@ -175,10 +175,13 @@ def _fetch_query(url: str) -> str:
     return title
 
 
-def resolve_foreign_track(url: str) -> dict:
-    """Best-effort match: reads the track's title/artist and searches
-    YouTube first, then SoundCloud. Returns {"url", "title"} of the
-    closest match found, or raises if nothing turned up anywhere."""
+def resolve_foreign_track(url: str) -> list[dict]:
+    """Best-effort match: reads the track's title/artist and searches both
+    YouTube and SoundCloud (not just one — YouTube is increasingly prone to
+    blocking datacenter IPs with its anti-bot check, so having a SoundCloud
+    candidate ready to fall back to at download time matters). Returns a
+    list of {"url", "title"} candidates, YouTube first if found, or raises
+    if neither turned up anything."""
     query = _fetch_query(url)
 
     opts = {
@@ -188,6 +191,7 @@ def resolve_foreign_track(url: str) -> dict:
         "socket_timeout": 20,
         "retries": 3,
     }
+    candidates = []
     for search_prefix in ("ytsearch1", "scsearch1"):
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -197,8 +201,10 @@ def resolve_foreign_track(url: str) -> dict:
                 found = entries[0]
                 found_url = found.get("url") or found.get("webpage_url")
                 if found_url:
-                    return {"url": found_url, "title": found.get("title") or query}
+                    candidates.append({"url": found_url, "title": found.get("title") or query})
         except Exception:  # noqa: BLE001
             continue
 
-    raise RuntimeError(f'No se encontró "{query}" en YouTube ni SoundCloud.')
+    if not candidates:
+        raise RuntimeError(f'No se encontró "{query}" en YouTube ni SoundCloud.')
+    return candidates

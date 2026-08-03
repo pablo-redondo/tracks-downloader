@@ -128,6 +128,11 @@ class Item:
     bpm: Optional[float] = None
     key: Optional[str] = None
     camelot: Optional[str] = None
+    # Only set for tracks resolved from Spotify/Apple Music/Deezer/Tidal
+    # links that matched on more than one platform: if source_url fails
+    # (e.g. YouTube's anti-bot block), retry against this one before
+    # giving up.
+    fallback_url: Optional[str] = None
 
     def to_dict(self) -> dict:
         return {
@@ -265,7 +270,12 @@ class JobManager:
 
         for idx, entry in enumerate(entries):
             item_id = str(idx)
-            job.items[item_id] = Item(id=item_id, title=entry["title"], source_url=entry["url"])
+            job.items[item_id] = Item(
+                id=item_id,
+                title=entry["title"],
+                source_url=entry["url"],
+                fallback_url=entry.get("fallback_url"),
+            )
             job.item_order.append(item_id)
 
         job.status = "downloading"
@@ -289,8 +299,18 @@ class JobManager:
             # Spotify/Apple Music/Deezer/Tidal etc. — not downloadable
             # directly (DRM), so find the closest match on YouTube/
             # SoundCloud instead and treat it as a normal single-track job.
-            found = resolve_foreign_track(url)
-            return [{"url": found["url"], "title": found["title"], "playlist_title": None}]
+            # A second candidate (usually SoundCloud) rides along as a
+            # fallback in case the first one (usually YouTube) fails.
+            candidates = resolve_foreign_track(url)
+            best = candidates[0]
+            return [
+                {
+                    "url": best["url"],
+                    "title": best["title"],
+                    "playlist_title": None,
+                    "fallback_url": candidates[1]["url"] if len(candidates) > 1 else None,
+                }
+            ]
 
         opts = {
             "quiet": True,
@@ -374,19 +394,22 @@ class JobManager:
 
         mp3_path = None
         try:
-            mp3_path = self._attempt_download(base_opts, item.source_url)
+            mp3_path = self._download_with_client_fallbacks(base_opts, item.source_url)
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
-            if _is_youtube(item.source_url) and _looks_like_bot_check(str(exc)):
-                for client in _YOUTUBE_CLIENT_FALLBACKS:
-                    retry_opts = dict(base_opts)
-                    retry_opts["extractor_args"] = {"youtube": {"player_client": [client]}}
-                    try:
-                        mp3_path = self._attempt_download(retry_opts, item.source_url)
-                        last_exc = None
-                        break
-                    except Exception as retry_exc:  # noqa: BLE001
-                        last_exc = retry_exc
+            # Resolved from Spotify/Apple Music/Deezer/Tidal and matched on
+            # a second platform too: if the primary pick (usually YouTube)
+            # fails for any reason — including YouTube's anti-bot block
+            # persisting across every client — try that one instead of
+            # giving up on the whole track.
+            if item.fallback_url:
+                try:
+                    if _is_soundcloud(item.fallback_url):
+                        _SOUNDCLOUD_LIMITER.acquire()
+                    mp3_path = self._download_with_client_fallbacks(base_opts, item.fallback_url)
+                    last_exc = None
+                except Exception as fallback_exc:  # noqa: BLE001
+                    last_exc = fallback_exc
             if mp3_path is None:
                 item.status = "error"
                 item.error = _friendly_error(str(last_exc))
@@ -409,6 +432,25 @@ class JobManager:
         if not Path(mp3_path).exists():
             raise RuntimeError("La conversión a mp3 falló")
         return mp3_path
+
+    def _download_with_client_fallbacks(self, base_opts: dict, source_url: str) -> str:
+        """Tries the default client; if that specific URL is YouTube and
+        hits the anti-bot wall, retries with the android/ios/tv clients
+        before giving up. Raises the last error if every attempt fails."""
+        try:
+            return self._attempt_download(base_opts, source_url)
+        except Exception as exc:  # noqa: BLE001
+            if not (_is_youtube(source_url) and _looks_like_bot_check(str(exc))):
+                raise
+            last_exc = exc
+            for client in _YOUTUBE_CLIENT_FALLBACKS:
+                retry_opts = dict(base_opts)
+                retry_opts["extractor_args"] = {"youtube": {"player_client": [client]}}
+                try:
+                    return self._attempt_download(retry_opts, source_url)
+                except Exception as retry_exc:  # noqa: BLE001
+                    last_exc = retry_exc
+            raise last_exc
 
     def _finish_item(self, job: Job, item: Item, mp3_path: str) -> None:
         # Best-effort BPM/key analysis: never fail the download over this.

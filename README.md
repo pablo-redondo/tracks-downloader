@@ -122,19 +122,24 @@ Serato, Traktor, etc.
 - **YouTube "Sign in to confirm you're not a bot"**: YouTube bloquea cada
   vez más agresivamente las IPs de centros de datos (como las de Fly.io)
   pidiendo iniciar sesión. La app reintenta automáticamente con los
-  clientes internos `android`/`ios`/`tv` de YouTube, que casi siempre
-  esquivan ese bloqueo sin necesitar cuentas ni cookies. Es una carrera de
-  armas activa entre `yt-dlp` y YouTube — si empieza a fallar de nuevo con
+  clientes internos `android`/`ios`/`tv` de YouTube, que a veces esquivan
+  ese bloqueo sin necesitar cuentas ni cookies — pero YouTube puede
+  bloquear igual con los 4 (es una carrera de armas activa entre `yt-dlp`
+  y YouTube, sin garantía permanente). Si empieza a fallar de nuevo con
   todos los reintentos agotados, lo primero a probar es actualizar
   `yt-dlp` a la última versión y hacer un rebuild sin caché
-  (`fly deploy --no-cache`).
+  (`fly deploy --no-cache`). Para pistas resueltas desde Spotify/Apple
+  Music/Deezer/Tidal, si YouTube sigue bloqueado la app cae
+  automáticamente al resultado de SoundCloud si también aparece ahí (ver
+  más abajo) — para enlaces directos de YouTube no hay ese respaldo.
 
 **Enlaces de Spotify, Apple Music, Deezer o Tidal** (solo pista suelta, no
 playlists de esas plataformas): como esas plataformas protegen su audio con
 DRM y no se pueden descargar directamente, la app lee el título/artista de
-la página y busca automáticamente la pista en YouTube (o en SoundCloud si
-no aparece en YouTube), y descarga esa coincidencia en su lugar. Es un
-"mejor esfuerzo":
+la página y busca automáticamente la pista en YouTube y en SoundCloud.
+Descarga la de YouTube por defecto, pero si esa falla (por el bloqueo
+anti-bot o cualquier otro motivo) y también apareció en SoundCloud, cae a
+esa automáticamente antes de darse por vencida. Es un "mejor esfuerzo":
 
 - Puede fallar si la página no expone el título de forma legible (algún
   cambio de formato en esas webs) o si no hay ninguna coincidencia
