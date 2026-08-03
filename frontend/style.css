@@ -1,0 +1,186 @@
+:root {
+  color-scheme: dark;
+  --bg: #0f1115;
+  --panel: #171a21;
+  --accent: #ff5f2e;
+  --accent-dim: #ff5f2e33;
+  --text: #eaeaea;
+  --muted: #8a8f98;
+  --error: #ff5c5c;
+  --ok: #4caf50;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+header {
+  padding: 2.5rem 1.5rem 1.5rem;
+  text-align: center;
+}
+
+header h1 {
+  margin: 0 0 0.4rem;
+  font-size: 2rem;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0;
+}
+
+main {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+}
+
+#download-form {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  background: var(--panel);
+  padding: 1rem;
+  border-radius: 12px;
+}
+
+#url-input {
+  flex: 1 1 320px;
+  padding: 0.7rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #2a2e37;
+  background: #0f1115;
+  color: var(--text);
+  font-size: 1rem;
+}
+
+#quality-select {
+  padding: 0.7rem;
+  border-radius: 8px;
+  border: 1px solid #2a2e37;
+  background: #0f1115;
+  color: var(--text);
+}
+
+button {
+  background: var(--accent);
+  color: #16130f;
+  border: none;
+  padding: 0.7rem 1.4rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.08);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error {
+  color: var(--error);
+  margin-top: 0.6rem;
+}
+
+.hidden {
+  display: none;
+}
+
+#jobs-list {
+  margin-top: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.job-card {
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 1.1rem 1.3rem;
+}
+
+.job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.6rem;
+}
+
+.job-title {
+  font-weight: 600;
+}
+
+.job-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.job-status.error {
+  color: var(--error);
+}
+
+.job-status.completed {
+  color: var(--ok);
+}
+
+.progress-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: #2a2e37;
+  overflow: hidden;
+  margin: 0.4rem 0;
+}
+
+.progress-bar > div {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid #232733;
+}
+
+.item-row:first-child {
+  border-top: none;
+}
+
+.item-title {
+  flex: 1;
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-progress {
+  width: 90px;
+}
+
+.item-link {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+
+.zip-link {
+  margin-top: 0.8rem;
+  display: inline-block;
+}

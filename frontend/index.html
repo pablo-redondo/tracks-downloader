@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tracks Downloader</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>🎧 Tracks Downloader</h1>
+    <p class="subtitle">Descarga canciones o playlists de YouTube y SoundCloud para tu librería de DJ</p>
+  </header>
+
+  <main>
+    <form id="download-form">
+      <input
+        type="url"
+        id="url-input"
+        placeholder="Pega aquí el enlace de YouTube o SoundCloud (canción o playlist)"
+        required
+      />
+      <select id="quality-select">
+        <option value="128">128 kbps</option>
+        <option value="192" selected>192 kbps</option>
+        <option value="320">320 kbps</option>
+      </select>
+      <button type="submit">Descargar</button>
+    </form>
+    <p id="form-error" class="error hidden"></p>
+
+    <section id="jobs-list"></section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
