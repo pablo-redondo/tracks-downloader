@@ -1,11 +1,22 @@
 """Resolves a single-track link from a platform we can't download from
 directly (Spotify, Apple Music, Deezer, Tidal — all DRM-protected) to a
-matching YouTube/SoundCloud track, by reading the page's title and
-searching for it."""
+matching YouTube/SoundCloud track.
+
+Prefers each platform's public JSON API (oEmbed / iTunes lookup / Deezer
+API) over scraping the page's HTML: those pages can serve a cookie-consent
+or bot-check interstitial instead of the real track page depending on
+region/headers, and scraping that silently would poison the search with
+unrelated text (e.g. ending up searching "Spotify Web Player" instead of
+the actual song). The JSON APIs are meant for exactly this kind of
+third-party lookup and don't have that problem.
+"""
 from __future__ import annotations
 
+import json
 import re
+import urllib.parse
 import urllib.request
+from typing import Optional
 
 import yt_dlp
 
@@ -55,6 +66,12 @@ def is_lookup_domain(url: str) -> bool:
     return any(domain in url for domain in LOOKUP_DOMAINS)
 
 
+def _http_get(url: str, accept: str = "*/*", max_bytes: int = 200_000) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT, "Accept": accept})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return resp.read(max_bytes)
+
+
 def _clean_title(raw: str) -> str:
     title = raw.replace("&amp;", "&").replace("&#39;", "'").replace("&quot;", '"')
     for suffix in _SUFFIXES_TO_STRIP:
@@ -67,27 +84,101 @@ def _clean_title(raw: str) -> str:
     return title.strip(" ‎‏-|")
 
 
-def _fetch_query(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        html = resp.read(200_000).decode("utf-8", errors="ignore")
-
+def _scrape_title(url: str) -> Optional[str]:
+    """Best-effort HTML scrape. May return None or garbage (e.g. a cookie
+    wall's title) — callers that use this as the *only* source should treat
+    it as unreliable; callers with a trusted API result should only accept
+    this if it corroborates that result (see _spotify_query)."""
+    html = _http_get(url, accept="text/html").decode("utf-8", errors="ignore")
     for pattern in _META_PATTERNS:
         match = pattern.search(html)
         if match:
             title = _clean_title(match.group(1))
             if title:
                 return title
+    return None
 
-    raise RuntimeError(
-        "No se pudo leer el título de esta pista para buscarla en YouTube/SoundCloud."
+
+def _spotify_query(url: str) -> str:
+    # oEmbed is Spotify's own public API for third-party link previews
+    # (used by Slack/Discord/etc.) — unlike the plain page, it won't serve
+    # a cookie-consent/region interstitial, so it's the reliable source
+    # for the track title. It doesn't include the artist, though.
+    oembed_url = "https://open.spotify.com/oembed?url=" + urllib.parse.quote(url, safe="")
+    data = json.loads(_http_get(oembed_url, accept="application/json").decode("utf-8", errors="ignore"))
+    track_title = (data.get("title") or "").strip()
+    if not track_title:
+        raise RuntimeError("No se pudo leer el título de esta pista de Spotify.")
+
+    try:
+        html_title = _scrape_title(url)
+    except Exception:  # noqa: BLE001
+        html_title = None
+    # Only trust the richer (title + artist) HTML scrape if it actually
+    # mentions the track oEmbed gave us — otherwise it's probably a
+    # cookie-wall/bot-check page and we fall back to the title alone.
+    if html_title and track_title.lower() in html_title.lower():
+        return html_title
+    return track_title
+
+
+def _apple_music_query(url: str) -> str:
+    # iTunes' public lookup API (no auth) covers Apple Music catalog IDs.
+    match = re.search(r"[?&]i=(\d+)", url) or re.search(r"/song/[^/]+/(\d+)", url)
+    if not match:
+        raise RuntimeError("No se pudo identificar la pista en ese enlace de Apple Music.")
+    data = json.loads(
+        _http_get(f"https://itunes.apple.com/lookup?id={match.group(1)}", accept="application/json").decode(
+            "utf-8", errors="ignore"
+        )
     )
+    results = data.get("results") or []
+    if not results:
+        raise RuntimeError("No se encontraron datos de esa pista en Apple Music.")
+    title = results[0].get("trackName")
+    artist = results[0].get("artistName")
+    if not title:
+        raise RuntimeError("No se pudo leer el título de esta pista de Apple Music.")
+    return f"{title} - {artist}" if artist else title
+
+
+def _deezer_query(url: str) -> str:
+    # Deezer's public API (no auth) — track share links carry the numeric id.
+    match = re.search(r"/track/(\d+)", url)
+    if not match:
+        raise RuntimeError("No se pudo identificar la pista en ese enlace de Deezer.")
+    data = json.loads(
+        _http_get(f"https://api.deezer.com/track/{match.group(1)}", accept="application/json").decode(
+            "utf-8", errors="ignore"
+        )
+    )
+    title = data.get("title")
+    artist = (data.get("artist") or {}).get("name")
+    if not title:
+        raise RuntimeError("No se pudo leer el título de esta pista de Deezer.")
+    return f"{title} - {artist}" if artist else title
+
+
+def _fetch_query(url: str) -> str:
+    if "open.spotify.com" in url:
+        return _spotify_query(url)
+    if "music.apple.com" in url:
+        return _apple_music_query(url)
+    if "deezer.com" in url:
+        return _deezer_query(url)
+    # Tidal and anything else: no simple public API, best-effort HTML scrape.
+    title = _scrape_title(url)
+    if not title:
+        raise RuntimeError(
+            "No se pudo leer el título de esta pista para buscarla en YouTube/SoundCloud."
+        )
+    return title
 
 
 def resolve_foreign_track(url: str) -> dict:
-    """Best-effort match: reads the track's title/artist off the page and
-    searches YouTube first, then SoundCloud. Returns {"url", "title"} of
-    the closest match found, or raises if nothing turned up anywhere."""
+    """Best-effort match: reads the track's title/artist and searches
+    YouTube first, then SoundCloud. Returns {"url", "title"} of the
+    closest match found, or raises if nothing turned up anywhere."""
     query = _fetch_query(url)
 
     opts = {
