@@ -10,9 +10,10 @@ automáticamente para organizar tu librería de DJ.
   a mp3, analiza BPM/tonalidad y etiqueta el archivo (ID3 `TBPM`/`TKEY`).
   Necesita un proceso de larga duración con disco, así que **no puede
   desplegarse en Vercel** (funciones serverless, sin ffmpeg, sin disco
-  persistente). Despliégalo en un VPS o en un servicio con capa gratuita que
-  soporte contenedores/procesos largos: Railway, Render, Fly.io, tu propio
-  servidor, etc.
+  persistente) ni en plataformas que "congelan" la CPU entre peticiones
+  (Cloud Run, etc.) — las descargas siguen en un hilo en segundo plano
+  después de responder al request. Este repo ya trae `Dockerfile` y
+  `fly.toml` listos para **Fly.io** (ver más abajo).
 - `frontend/` — HTML/CSS/JS estático sin build, listo para desplegar en
   **Vercel** como proyecto independiente. Habla con el backend por HTTPS
   (CORS ya está habilitado en el backend).
@@ -33,18 +34,36 @@ Requiere [ffmpeg](https://ffmpeg.org/) instalado (`apt install ffmpeg` /
 Con esto abierto en `http://localhost:8000` ya sirve también el frontend
 integrado (no hace falta Vercel para uso local).
 
-### Desplegar el backend (para poder usarlo desde el frontend en Vercel)
+### Desplegar el backend en Fly.io
 
-Cualquier host que permita Docker/Python de larga duración con ffmpeg vale.
-Por ejemplo con Railway o Render:
+`backend/Dockerfile` (Python 3.11 + ffmpeg + libsndfile) y `backend/fly.toml`
+ya están preparados. Solo te hace falta la [CLI de Fly](https://fly.io/docs/flyctl/install/)
+y una cuenta (pide tarjeta para verificar, no cobra dentro del free tier):
 
-1. Conecta este repo, configura el **Root Directory** en `backend`.
-2. Build command: `pip install -r requirements.txt`
-3. Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-4. Asegúrate de que la imagen tenga `ffmpeg` (en Railway/Render con buildpacks
-   Nix/Docker basta con añadir el paquete `ffmpeg`; con Docker propio,
-   `apt-get install -y ffmpeg` en el Dockerfile).
-5. Anota la URL pública HTTPS que te den (p. ej. `https://tu-app.up.railway.app`).
+```bash
+cd backend
+fly auth login
+fly launch --no-deploy   # detecta el Dockerfile; te pedirá nombre de app y región
+                          # (puedes aceptar sobrescribir fly.toml con tus datos)
+fly deploy
+```
+
+Si prefieres no usar `fly launch`, edita el nombre de `app` dentro de
+`backend/fly.toml` por algo único tuyo, luego:
+
+```bash
+fly apps create tu-nombre-unico
+fly deploy
+```
+
+Importante — el estado de los trabajos vive en memoria del proceso, así que
+**no escales a más de 1 máquina** (`fly scale count 1`, que además es el
+valor por defecto). `fly.toml` ya fija `min_machines_running = 1` y
+`auto_stop_machines = false` para que la app no se "duerma" a mitad de una
+descarga.
+
+Cuando termine el deploy, `fly status` te da la URL pública
+(`https://tu-nombre-unico.fly.dev`).
 
 ## Frontend: desplegar en Vercel
 
