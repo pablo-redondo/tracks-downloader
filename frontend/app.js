@@ -197,14 +197,17 @@ function updateItemRow(row, item) {
     row.action.href = apiUrl(item.download_url);
     row.action.style.color = "";
     row.action.textContent = "⬇ mp3";
+    row.action.removeAttribute("title");
   } else if (item.status === "error") {
     row.action.removeAttribute("href");
     row.action.style.color = "var(--error)";
     row.action.textContent = "error";
+    row.action.title = item.error || "Error desconocido";
   } else {
     row.action.removeAttribute("href");
     row.action.style.color = "";
     row.action.textContent = item.status;
+    row.action.removeAttribute("title");
   }
 }
 
