@@ -165,6 +165,59 @@ button:disabled {
   transition: width 0.3s ease;
 }
 
+.playlist-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  padding: 0.55rem 0;
+  border-top: 1px solid #232733;
+  margin-top: 0.3rem;
+}
+
+.playlist-summary.hidden {
+  display: none;
+}
+
+.playlist-toggle {
+  background: transparent;
+  border: 1px solid #2a2e37;
+  color: var(--muted);
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.playlist-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.items.collapsible {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.25s ease;
+}
+
+.items.collapsible.expanded {
+  max-height: 420px;
+  overflow-y: auto;
+  margin-top: 0.3rem;
+  padding-right: 0.4rem;
+}
+
+.items.collapsible.expanded::-webkit-scrollbar {
+  width: 8px;
+}
+
+.items.collapsible.expanded::-webkit-scrollbar-thumb {
+  background: #2a2e37;
+  border-radius: 4px;
+}
+
 .item-row {
   display: flex;
   align-items: center;

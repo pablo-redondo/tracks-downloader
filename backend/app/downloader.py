@@ -86,6 +86,7 @@ class Job:
     items: dict = field(default_factory=dict)
     item_order: list = field(default_factory=list)
     zip_completed_count: int = 0
+    zip_lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
     def overall_progress(self) -> float:
         if not self.items:
@@ -152,16 +153,20 @@ class JobManager:
         if not completed:
             return None
         zip_path = DOWNLOADS_DIR / job_id / "_playlist.zip"
-        # Building the zip for a big playlist (hundreds of tracks) is slow and
-        # doubles disk usage momentarily; skip it if nothing changed since the
-        # last time it was built (e.g. the user clicks the link twice).
-        if zip_path.exists() and job.zip_completed_count == len(completed):
+        with job.zip_lock:
+            # Building the zip for a big playlist (hundreds of tracks) is slow
+            # and doubles disk usage momentarily; skip it if nothing changed
+            # since the last time it was built (usually nothing — items get
+            # appended incrementally as they finish, see _append_to_zip).
+            if zip_path.exists() and job.zip_completed_count == len(completed):
+                return zip_path
+            # mp3 is already compressed, so ZIP_STORED (no re-compression)
+            # is just as small and much faster than ZIP_DEFLATED here.
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zf:
+                for item in completed:
+                    zf.write(item.file_path, arcname=Path(item.file_path).name)
+            job.zip_completed_count = len(completed)
             return zip_path
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for item in completed:
-                zf.write(item.file_path, arcname=Path(item.file_path).name)
-        job.zip_completed_count = len(completed)
-        return zip_path
 
     # -- internals ---------------------------------------------------
 
@@ -209,6 +214,8 @@ class JobManager:
             "no_warnings": True,
             "extract_flat": "in_playlist",
             "skip_download": True,
+            "socket_timeout": 30,
+            "retries": 5,
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -267,6 +274,14 @@ class JobManager:
                 {"key": "EmbedThumbnail"},
             ],
             "writethumbnail": True,
+            # Bounded so a single rate-limited/stalled track can't hog a
+            # worker thread forever — with only _ITEM_WORKERS threads, a
+            # handful of stuck items is enough to stall an entire playlist.
+            # Better to fail that one item fast and move on to the rest.
+            "socket_timeout": 30,
+            "retries": 5,
+            "fragment_retries": 5,
+            "extractor_retries": 3,
         }
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -291,5 +306,23 @@ class JobManager:
             item.key = result["key"]
             item.camelot = result["camelot"]
             tag_analysis(mp3_path, result["bpm"], result["camelot"])
+        except Exception:  # noqa: BLE001
+            pass
+
+        if job.is_playlist:
+            self._append_to_zip(job, item)
+
+    def _append_to_zip(self, job: Job, item: Item) -> None:
+        """Adds a finished track to the playlist zip as soon as it's ready,
+        so the zip is already built (or nearly) by the time the job
+        finishes — no need to compress hundreds of tracks in one go when
+        the user (or the auto-download) requests it."""
+        zip_path = DOWNLOADS_DIR / job.id / "_playlist.zip"
+        try:
+            with job.zip_lock:
+                mode = "a" if zip_path.exists() else "w"
+                with zipfile.ZipFile(zip_path, mode, zipfile.ZIP_STORED) as zf:
+                    zf.write(item.file_path, arcname=Path(item.file_path).name)
+                job.zip_completed_count += 1
         except Exception:  # noqa: BLE001
             pass

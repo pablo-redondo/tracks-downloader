@@ -143,7 +143,18 @@ cientos de canciones) y que se descargue sola:
 - El frontend actualiza solo las filas que cambiaron en cada sondeo (en vez
   de redibujar la lista entera) y espacia el intervalo de sondeo según el
   tamaño de la lista (hasta cada 4s con más de 200 pistas), para no ir lento
-  en listas de 500+.
+  en listas de 500+. La lista de pistas de una playlist aparece colapsada
+  detrás de un resumen ("🎵 40/465 completadas") con un botón para
+  desplegarla; desplegada, se queda en un panel con scroll propio (no
+  estira la página entera).
+- Cada pista tiene un tiempo/reintentos acotados en `yt-dlp`
+  (`socket_timeout`, `retries`, etc.): si una pista se cuelga o topa con un
+  límite de peticiones de la plataforma, falla rápido en vez de bloquear
+  para siempre uno de los 3 hilos de descarga (antes esto podía dejar la
+  playlist entera "atascada" tras las primeras pistas).
+- El ZIP se va construyendo pista a pista según se completan (no todo de
+  golpe al final), y en cuanto la playlist termina, el navegador lanza solo
+  el diálogo de guardar el ZIP — no hace falta pulsar nada.
 
 Recomendaciones si vas a mover playlists muy grandes (según la máquina de
 Fly.io que tengas):

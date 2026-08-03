@@ -83,9 +83,30 @@ function createJobCard(jobId) {
       <div class="job-status">extrayendo información…</div>
     </div>
     <div class="progress-bar"><div style="width:0%"></div></div>
+    <div class="playlist-summary hidden">
+      <span class="playlist-counts"></span>
+      <button type="button" class="playlist-toggle">Ver pistas ▾</button>
+    </div>
     <div class="items"></div>
   `;
-  return { el, rows: new Map(), itemCount: 0 };
+
+  const card = {
+    el,
+    rows: new Map(),
+    itemCount: 0,
+    expanded: false,
+    zipAutoTriggered: false,
+  };
+
+  const toggleBtn = el.querySelector(".playlist-toggle");
+  const itemsEl = el.querySelector(".items");
+  toggleBtn.addEventListener("click", () => {
+    card.expanded = !card.expanded;
+    itemsEl.classList.toggle("expanded", card.expanded);
+    toggleBtn.textContent = card.expanded ? "Ocultar pistas ▴" : `Ver ${card.itemCount} pistas ▾`;
+  });
+
+  return card;
 }
 
 // Listas de cientos de canciones no deben machacar al navegador con
@@ -96,6 +117,15 @@ function pollDelay(itemCount) {
   return 1200;
 }
 
+function triggerDownload(url) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 async function poll(jobId, card) {
   try {
     const res = await fetch(apiUrl(`/api/jobs/${jobId}`));
@@ -104,7 +134,12 @@ async function poll(jobId, card) {
     render(card, job);
     card.itemCount = job.items.length;
 
-    if (job.status === "completed" || job.status === "completed_with_errors" || job.status === "error") {
+    const finished = job.status === "completed" || job.status === "completed_with_errors";
+    if (finished && job.is_playlist && !card.zipAutoTriggered) {
+      card.zipAutoTriggered = true;
+      triggerDownload(apiUrl(`/api/jobs/${job.id}/zip`));
+    }
+    if (finished || job.status === "error") {
       return;
     }
   } catch (err) {
@@ -178,6 +213,9 @@ function render(card, job) {
   const status = card.el.querySelector(".job-status");
   const bar = card.el.querySelector(".progress-bar > div");
   const itemsEl = card.el.querySelector(".items");
+  const summary = card.el.querySelector(".playlist-summary");
+  const counts = card.el.querySelector(".playlist-counts");
+  const toggleBtn = card.el.querySelector(".playlist-toggle");
 
   title.textContent = job.title || job.url;
   bar.style.width = `${job.progress}%`;
@@ -209,6 +247,29 @@ function render(card, job) {
     if (row.sig === sig) continue;
     row.sig = sig;
     updateItemRow(row, item);
+  }
+
+  // Con una sola pista se ve todo directamente; con una playlist se
+  // colapsa detrás de un resumen para no llenar la página de líneas.
+  if (job.is_playlist) {
+    summary.classList.remove("hidden");
+    itemsEl.classList.add("collapsible");
+    itemsEl.classList.toggle("expanded", card.expanded);
+    toggleBtn.textContent = card.expanded ? "Ocultar pistas ▴" : `Ver ${job.items.length} pistas ▾`;
+
+    const completedCount = job.items.filter((i) => i.status === "completed").length;
+    const erroredCount = job.items.filter((i) => i.status === "error").length;
+    counts.innerHTML = "";
+    counts.append(`🎵 ${completedCount}/${job.items.length} completadas`);
+    if (erroredCount) {
+      const err = document.createElement("span");
+      err.style.color = "var(--error)";
+      err.textContent = ` · ${erroredCount} con error`;
+      counts.appendChild(err);
+    }
+  } else {
+    summary.classList.add("hidden");
+    itemsEl.classList.remove("collapsible", "expanded");
   }
 
   const existingZip = card.el.querySelector(".zip-link");
