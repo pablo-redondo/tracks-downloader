@@ -393,8 +393,9 @@ class JobManager:
         }
 
         mp3_path = None
+        resolved_title = None
         try:
-            mp3_path = self._download_with_client_fallbacks(base_opts, item.source_url)
+            mp3_path, resolved_title = self._download_with_client_fallbacks(base_opts, item.source_url)
         except Exception as exc:  # noqa: BLE001
             last_exc = exc
             # Resolved from Spotify/Apple Music/Deezer/Tidal and matched on
@@ -406,7 +407,7 @@ class JobManager:
                 try:
                     if _is_soundcloud(item.fallback_url):
                         _SOUNDCLOUD_LIMITER.acquire()
-                    mp3_path = self._download_with_client_fallbacks(base_opts, item.fallback_url)
+                    mp3_path, resolved_title = self._download_with_client_fallbacks(base_opts, item.fallback_url)
                     last_exc = None
                 except Exception as fallback_exc:  # noqa: BLE001
                     last_exc = fallback_exc
@@ -415,6 +416,8 @@ class JobManager:
                 item.error = _friendly_error(str(last_exc))
                 return
 
+        if resolved_title:
+            item.title = resolved_title
         item.file_path = mp3_path
         item.progress = 100.0
         item.status = "completed"
@@ -424,16 +427,20 @@ class JobManager:
         # to pick up the next track, instead of waiting on either of them.
         self._analysis_executor.submit(self._finish_item, job, item, mp3_path)
 
-    def _attempt_download(self, opts: dict, source_url: str) -> str:
+    def _attempt_download(self, opts: dict, source_url: str) -> tuple[str, Optional[str]]:
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(source_url, download=True)
             filename = ydl.prepare_filename(info)
         mp3_path = str(Path(filename).with_suffix(".mp3"))
         if not Path(mp3_path).exists():
             raise RuntimeError("La conversión a mp3 falló")
-        return mp3_path
+        # extract_info here is a *full* (non-flat) resolution, so its title
+        # is the real one — unlike the flat playlist listing, which for
+        # some sources (SoundCloud sets in particular) never gets a proper
+        # per-track title and falls back to a generic placeholder.
+        return mp3_path, info.get("title")
 
-    def _download_with_client_fallbacks(self, base_opts: dict, source_url: str) -> str:
+    def _download_with_client_fallbacks(self, base_opts: dict, source_url: str) -> tuple[str, Optional[str]]:
         """Tries the default client; if that specific URL is YouTube and
         hits the anti-bot wall, retries with the android/ios/tv clients
         before giving up. Raises the last error if every attempt fails."""

@@ -131,14 +131,20 @@ async function poll(jobId, card) {
     const res = await fetch(apiUrl(`/api/jobs/${jobId}`));
     if (!res.ok) return;
     const job = await res.json();
-    render(card, job);
     card.itemCount = job.items.length;
 
+    // Set the flag (and fire the download) *before* rendering, so the
+    // "ya se descargó solo" note shows up on the same render pass instead
+    // of needing one more poll that will never come (finished jobs stop
+    // polling right after this).
     const finished = job.status === "completed" || job.status === "completed_with_errors";
     if (finished && job.is_playlist && !card.zipAutoTriggered) {
       card.zipAutoTriggered = true;
       triggerDownload(apiUrl(`/api/jobs/${job.id}/zip`));
     }
+
+    render(card, job);
+
     if (finished || job.status === "error") {
       return;
     }
@@ -240,7 +246,7 @@ function render(card, job) {
   // vez de tirar y reconstruir el DOM entero (crítico con listas de
   // cientos de pistas sondeadas cada pocos segundos).
   for (const item of job.items) {
-    const sig = `${item.status}|${item.progress}|${item.bpm}|${item.camelot}|${item.download_url}`;
+    const sig = `${item.status}|${item.progress}|${item.bpm}|${item.camelot}|${item.download_url}|${item.title}`;
     let row = card.rows.get(item.id);
     if (!row) {
       row = buildItemRow();
@@ -275,16 +281,28 @@ function render(card, job) {
     itemsEl.classList.remove("collapsible", "expanded");
   }
 
-  const existingZip = card.el.querySelector(".zip-link");
+  const existingZipWrap = card.el.querySelector(".zip-wrap");
   if (job.is_playlist && (job.status === "completed" || job.status === "completed_with_errors")) {
-    if (!existingZip) {
+    if (!existingZipWrap) {
+      const wrap = document.createElement("div");
+      wrap.className = "zip-wrap";
+
       const zip = document.createElement("a");
       zip.className = "zip-link";
       zip.href = apiUrl(`/api/jobs/${job.id}/zip`);
       zip.textContent = "⬇ Descargar todo (ZIP)";
-      card.el.appendChild(zip);
+      wrap.appendChild(zip);
+
+      if (card.zipAutoTriggered) {
+        const note = document.createElement("span");
+        note.className = "zip-auto-note";
+        note.textContent = "Ya se descargó solo a tu carpeta de descargas.";
+        wrap.appendChild(note);
+      }
+
+      card.el.appendChild(wrap);
     }
-  } else if (existingZip) {
-    existingZip.remove();
+  } else if (existingZipWrap) {
+    existingZipWrap.remove();
   }
 }

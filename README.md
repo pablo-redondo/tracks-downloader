@@ -99,8 +99,16 @@ Cuando termine el deploy, `fly status` te da la URL pública
 2. Elige la calidad (128 / 192 / 320 kbps).
 3. Pulsa "Descargar". Verás el progreso de cada pista en tiempo real, y al
    terminar el BPM y la tonalidad (notación Camelot, p. ej. `8A`) estimados.
-4. Descarga cada mp3 individualmente o, si era una playlist, todo junto en
-   un ZIP.
+4. Descarga cada mp3 individualmente, o si era una playlist, el ZIP con
+   todo se descarga solo en cuanto termina (además de poder pulsarlo tú
+   a mano). Si tu navegador está configurado para preguntar dónde guardar
+   cada descarga, verás el diálogo del explorador de archivos; si no
+   (el comportamiento por defecto en la mayoría de navegadores), se
+   guarda directo en tu carpeta de Descargas sin preguntar — eso lo
+   decide el navegador, no la web. Puedes activarlo en Chrome/Edge en
+   *Ajustes → Descargas → "Preguntar dónde guardar cada archivo"*, o en
+   Firefox en *Ajustes → General → Descargas → "Preguntar siempre dónde
+   guardar los archivos"*.
 
 Los mp3 se guardan (mientras el proceso está en marcha) en
 `backend/downloads/<job_id>/`, con metadatos, carátula, BPM y tonalidad ya
